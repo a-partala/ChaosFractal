@@ -1,63 +1,101 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class DotCreator : MonoBehaviour
 {
-    private enum State { CreateMainDots, MakeAFractal }
-    private State state = State.CreateMainDots;
+    private enum State { CreateStartDots, MakeAFractal }
+    private State state = State.CreateStartDots;
+
+    [Header("Prefabs")]
+    [SerializeField] private GameObject borderedDotPrefab;
     [SerializeField] private GameObject dotPrefab;
-    [SerializeField] private GameObject dotClearPrefab;
-    [SerializeField] private GameObject CreateMainDotsUI;
+
+    [Header("UI")]
+    [SerializeField] private GameObject CreateStartDotsUI;
     [SerializeField] private GameObject MakeAFractalUI;
-    private List<Transform> mainDots = new List<Transform>();
+
+    private List<Transform> startDots = new List<Transform>();
     private List<Transform> allDots = new List<Transform>();
     private Transform lastDot = null;
 
-    private void Awake()
+    private void Start()
     {
-        UpdateState(0);
+        UpdateState(State.CreateStartDots);
     }
 
-    public void CreateMainDot2D()
+    public void CreateStartDotInTouch()
     {
         if(Input.touches.Length == 0)
         {
             return;
         }
         var touch = Input.GetTouch(0);
-        Vector2 touchPos = Camera.main.ScreenToWorldPoint(touch.position);
-        CreateMainDotInPos(touchPos);
+        Vector2 worldTouchPos = Camera.main.ScreenToWorldPoint(touch.position);
+        CreateStartDotInPos(worldTouchPos);
     }
 
-    public void UpdateState(int state)
+    private void UpdateState(State state)
+    {
+        var newState = state;
+        switch (newState)
+        {
+            case State.CreateStartDots:
+                ClearAllDots();
+                CreateStartDotsUI.SetActive(true);
+                MakeAFractalUI.SetActive(false);
+                break;
+            case State.MakeAFractal:
+                foreach (var dot in startDots)
+                {
+                    var child = dot.GetChild(0);
+                    if (child == null)
+                    {
+                        continue;
+                    }
+                    Destroy(child.gameObject);
+                }
+                CreateStartDotsUI.SetActive(false);
+                MakeAFractalUI.SetActive(true);
+                break;
+        }
+        this.state = newState;
+    }
+
+    [SerializeField]
+    private void UpdateState(int state)
     {
         var newState = (State)state;
         switch (newState)
         {
-            case State.CreateMainDots:
+            case State.CreateStartDots:
                 ClearAllDots();
-                CreateMainDotsUI.SetActive(true);
+                CreateStartDotsUI.SetActive(true);
                 MakeAFractalUI.SetActive(false);
                 break;
             case State.MakeAFractal:
-                foreach(var dot in mainDots)
+                foreach(var dot in startDots)
                 {
-                    Destroy(dot.GetChild(0).gameObject);
+                    var child = dot.GetChild(0);
+                    if(child == null)
+                    {
+                        continue;
+                    }
+                    Destroy(child.gameObject);
                 }
-                CreateMainDotsUI.SetActive(false);
+                CreateStartDotsUI.SetActive(false);
                 MakeAFractalUI.SetActive(true);
                 break;
         }
+        this.state = (State)newState;
     }
 
     private void ClearAllDots()
     {
-        foreach(var dot in mainDots)
+        foreach (var dot in startDots)
         {
             Destroy(dot.gameObject);
         }
-        mainDots.Clear();
+        startDots.Clear();
         foreach(var dot in allDots)
         {
             Destroy(dot.gameObject);
@@ -65,22 +103,20 @@ public class DotCreator : MonoBehaviour
         allDots.Clear();
     }
 
-    private void CreateMainDotInPos(Vector3 pos)
+    private void CreateStartDotInPos(Vector3 pos)
     {
-        var dot = Instantiate(dotPrefab);
+        var dot = Instantiate(borderedDotPrefab);
         dot.SetActive(true);
         dot.transform.position = pos;
-        mainDots.Add(dot.transform);
+        startDots.Add(dot.transform);
     }
 
     public void CreateNewDots(int amount = 1)
     {
-        MakeAFractalUI.SetActive(false);
         for (int i = 0; i < amount; i++)
         {
             CreateNewDot();
         }
-        MakeAFractalUI.SetActive(true);
     }
 
     public void CreateNewDot()
@@ -88,8 +124,13 @@ public class DotCreator : MonoBehaviour
         if(lastDot == null)
         {
             lastDot = GetRandomMainDot();
+            if(lastDot == null)
+            {
+                Debug.Log("There is no last dot");
+                return;
+            }
         }
-        var dot = Instantiate(dotClearPrefab);
+        var dot = Instantiate(dotPrefab);
         dot.SetActive(true);
         dot.transform.position = GetHalfPathFromLastToRandomMainDot();
         allDots.Add(dot.transform);
@@ -108,16 +149,22 @@ public class DotCreator : MonoBehaviour
 
     private Vector3 GetRandomMainDotPos()
     {
+        Transform mainDot = GetRandomMainDot();
+        if(mainDot == null)
+        {
+            Debug.LogError("There is no start dots");
+            return Vector3.zero;
+        }
         return GetRandomMainDot().position;
     }
 
     private Transform GetRandomMainDot()
     {
-        if(mainDots.Count == 0)
+        if(startDots.Count == 0)
         {
             return null;
         }
-        int rand = Random.Range(0, mainDots.Count);
-        return mainDots[rand];
+        int rand = Random.Range(0, startDots.Count);
+        return startDots[rand];
     }
 }
