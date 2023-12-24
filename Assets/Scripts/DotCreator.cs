@@ -1,26 +1,66 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Events;
 
 public class DotCreator : MonoBehaviour
 {
-    private enum State { CreateStartDots, MakeAFractal }
+    public enum State { CreateStartDots, MakeAFractal }
+    [Serializable]
+    public class StateSetup
+    {
+        public State State;
+        public UnityEvent Event;
+    }
     private State state = State.CreateStartDots;
+    [SerializeField] private float lerpToDotCoef = 0.5f;
+
+    [SerializeField] private StateSetup[] stateSetups = new StateSetup[2];
+    private Dictionary<State, StateSetup> stateSetupsMap = new Dictionary<State, StateSetup>();
 
     [Header("Prefabs")]
     [SerializeField] private GameObject borderedDotPrefab;
     [SerializeField] private GameObject dotPrefab;
 
-    [Header("UI")]
-    [SerializeField] private GameObject CreateStartDotsUI;
-    [SerializeField] private GameObject MakeAFractalUI;
-
     private List<Transform> startDots = new List<Transform>();
     private List<Transform> allDots = new List<Transform>();
     private Transform lastDot = null;
+    private bool isInitialized = false;
 
-    private void Start()
+    [HideInInspector]
+    public void Initialize()
     {
+        if(isInitialized)
+        {
+            return;
+        }
+        isInitialized = true;
+        AssignSetupDictionary();
         UpdateState(State.CreateStartDots);
+    }
+
+    private void AssignSetupDictionary()
+    {
+        if(stateSetups == null || stateSetups.Length == 0)
+        {
+            Debug.LogError($"{nameof(stateSetups)} is not assigned");
+            return;
+        }
+
+        stateSetupsMap.Clear();
+        foreach(var item in stateSetups)
+        {
+            if(stateSetupsMap.ContainsKey(item.State))
+            {
+                continue;
+            }
+            stateSetupsMap.Add(item.State, item);
+        }
+
+        if(stateSetupsMap.Count < Enum.GetValues(typeof(State)).Length)
+        {
+            Debug.LogError($"{nameof(stateSetups)} is less than {typeof(State)} enum");
+        }
     }
 
     public void CreateStartDotInTouch()
@@ -34,62 +74,31 @@ public class DotCreator : MonoBehaviour
         CreateStartDotInPos(worldTouchPos);
     }
 
-    private void UpdateState(State state)
+    public void UpdateState(int state)
     {
-        var newState = state;
-        switch (newState)
-        {
-            case State.CreateStartDots:
-                ClearAllDots();
-                CreateStartDotsUI.SetActive(true);
-                MakeAFractalUI.SetActive(false);
-                break;
-            case State.MakeAFractal:
-                foreach (var dot in startDots)
-                {
-                    var child = dot.GetChild(0);
-                    if (child == null)
-                    {
-                        continue;
-                    }
-                    Destroy(child.gameObject);
-                }
-                CreateStartDotsUI.SetActive(false);
-                MakeAFractalUI.SetActive(true);
-                break;
-        }
-        this.state = newState;
+        UpdateState((State)state);
     }
 
-    [SerializeField]
-    private void UpdateState(int state)
+    public void UpdateState(State state)
     {
-        var newState = (State)state;
-        switch (newState)
-        {
-            case State.CreateStartDots:
-                ClearAllDots();
-                CreateStartDotsUI.SetActive(true);
-                MakeAFractalUI.SetActive(false);
-                break;
-            case State.MakeAFractal:
-                foreach(var dot in startDots)
-                {
-                    var child = dot.GetChild(0);
-                    if(child == null)
-                    {
-                        continue;
-                    }
-                    Destroy(child.gameObject);
-                }
-                CreateStartDotsUI.SetActive(false);
-                MakeAFractalUI.SetActive(true);
-                break;
-        }
-        this.state = (State)newState;
+        this.state = state;
+        stateSetupsMap[state].Event?.Invoke();
     }
 
-    private void ClearAllDots()
+    public void ClearDotsChildren()
+    {
+        foreach (var dot in startDots)
+        {
+            var child = dot.GetChild(0);
+            if (child == null)
+            {
+                continue;
+            }
+            Destroy(child.gameObject);
+        }
+    }
+
+    public void ClearAllDots()
     {
         foreach (var dot in startDots)
         {
@@ -123,7 +132,7 @@ public class DotCreator : MonoBehaviour
     {
         if(lastDot == null)
         {
-            lastDot = GetRandomMainDot();
+            lastDot = GetRandomStartDot();
             if(lastDot == null)
             {
                 Debug.Log("There is no last dot");
@@ -132,39 +141,35 @@ public class DotCreator : MonoBehaviour
         }
         var dot = Instantiate(dotPrefab);
         dot.SetActive(true);
-        dot.transform.position = GetHalfPathFromLastToRandomMainDot();
+        dot.transform.position = LerpToRandomStartDot(lastDot.position);
         allDots.Add(dot.transform);
         lastDot = dot.transform;
     }
 
-    private Vector3 GetHalfPathFromLastToRandomMainDot()
+    private Vector3 LerpToRandomStartDot(Vector3 dotPos)
     {
-        return GetHalfPathToRandomMainDot(lastDot.position);
+        var newPos = Vector3.Lerp(dotPos, GetRandomStartDotPos(), lerpToDotCoef);
+        return newPos;
     }
 
-    private Vector3 GetHalfPathToRandomMainDot(Vector3 dotPos)
+    private Vector3 GetRandomStartDotPos()
     {
-        return (GetRandomMainDotPos() + dotPos) / 2f;
-    }
-
-    private Vector3 GetRandomMainDotPos()
-    {
-        Transform mainDot = GetRandomMainDot();
+        Transform mainDot = GetRandomStartDot();
         if(mainDot == null)
         {
             Debug.LogError("There is no start dots");
             return Vector3.zero;
         }
-        return GetRandomMainDot().position;
+        return mainDot.position;
     }
 
-    private Transform GetRandomMainDot()
+    private Transform GetRandomStartDot()
     {
         if(startDots.Count == 0)
         {
             return null;
         }
-        int rand = Random.Range(0, startDots.Count);
+        int rand = UnityEngine.Random.Range(0, startDots.Count);
         return startDots[rand];
     }
 }
